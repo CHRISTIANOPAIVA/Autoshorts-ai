@@ -1,0 +1,35 @@
+{
+  "name": "autoshorts-ai",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^2.0.88",
+    "@remotion/player": "^4.0.392",
+    "ai": "^5.0.114",
+    "cheerio": "^1.1.2",
+    "lucide-react": "^0.561.0",
+    "next": "16.0.10",
+    "openai": "^6.14.0",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "react-player": "^3.4.0",
+    "remotion": "^4.0.392",
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "eslint": "^9",
+    "eslint-config-next": "16.0.10",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

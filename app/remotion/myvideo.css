@@ -1,0 +1,42 @@
+:root {
+  --shadow-strong: 0 0 15px rgba(0, 0, 0, 0.5);
+}
+
+.image-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.image-element {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: brightness(0.9);
+  will-change: transform;
+}
+
+.word-animation-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 20px;
+  transform: scale(var(--scale, 1));
+}
+
+.word-animation-heading {
+  font-size: 72px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: white;
+  text-transform: uppercase;
+  text-shadow: var(--shadow-strong);
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .word-animation-heading {
+    font-size: 48px;
+  }
+}
