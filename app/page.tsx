@@ -9,11 +9,10 @@ import {
   Download, 
   RotateCcw, 
   Video, 
-  Wand2,
-  ImageIcon
+  Wand2
 } from "lucide-react";
 
-type Status = "idle" | "scripting" | "voicing" | "generating_images" | "ready" | "error";
+type Status = "idle" | "scripting" | "voicing" | "ready" | "error";
 
 export default function Home() {
   const [url, setUrl] = useState("");
@@ -30,22 +29,7 @@ export default function Home() {
   };
 
   const handleDownload = () => {
-    alert("🚀 Funcionalidade de Render:\n\nEm produção, isso enviaria o JSON para um servidor FFMPEG.\n\nPor enquanto, aproveite o preview em tempo real!");
-  };
-
-  const preloadImages = async (imageUrls: string[]) => {
-    const promises = imageUrls.map((src) => {
-      return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.src = src;
-        img.onload = resolve;
-        img.onerror = () => {
-          console.warn(`Falha ao carregar imagem: ${src}`);
-          resolve(null);
-        };
-      });
-    });
-    await Promise.all(promises);
+    alert("Para baixar o vídeo real (MP4), você precisaria configurar um renderizador na nuvem (AWS Lambda/Cloud Run). Por enquanto, isso é um Preview Web!");
   };
 
   const handleGenerate = async () => {
@@ -55,38 +39,35 @@ export default function Home() {
     setVideoProps(null);
 
     try {
-      // --- PASSO 1: GERAR ROTEIRO ---
+      // 1. ROTEIRO
       const scriptRes = await fetch("/api/create-script", {
         method: "POST",
         body: JSON.stringify({ url }),
         headers: { "Content-Type": "application/json" },
       });
 
-      if (!scriptRes.ok) throw new Error("Não consegui ler essa URL. Tente outro site!");
+      if (!scriptRes.ok) throw new Error("Erro ao ler URL.");
       const scriptData = await scriptRes.json();
 
       setStatus("voicing");
 
-      // --- PASSO 2: GERAR ÁUDIO ---
+      // 2. ÁUDIO
       const audioRes = await fetch("/api/generate-audio", {
         method: "POST",
         body: JSON.stringify({ text: scriptData.script_text }), 
         headers: { "Content-Type": "application/json" },
       });
 
-      if (!audioRes.ok) throw new Error("Erro ao criar a narração.");
+      if (!audioRes.ok) throw new Error("Erro ao criar áudio.");
       const audioData = await audioRes.json();
 
-      // --- PASSO 3: GERAR E BAIXAR IMAGENS ---
-      setStatus("generating_images");
-      
+      // 3. IMAGENS OTIMIZADAS (AQUI ESTÁ A CORREÇÃO DE VELOCIDADE)
+      // Removido o Preload. A URL é gerada e enviada direto pro player.
       const dynamicImages = (scriptData.visual_keywords || []).map((prompt: string) => {
-        const enhancedPrompt = `${prompt}, cinematic lighting, photorealistic, 8k uhd, vertical wallpaper`;
-        return `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=1080&height=1920&nologo=true&model=flux`;
+        // CORREÇÃO: Removi "8k", "uhd". Reduzi width para 720 (HD Leve).
+        const enhancedPrompt = `${prompt}, cinematic, vertical`;
+        return `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=720&height=1280&nologo=true&model=flux`;
       });
-
-      console.log("⏳ Baixando imagens para evitar lag...");
-      await preloadImages(dynamicImages);
 
       const lastCaptionEnd = audioData.captions?.[audioData.captions.length - 1]?.end ?? 30;
       const calculatedDuration = Math.ceil(lastCaptionEnd * 30) + 60;
@@ -101,126 +82,72 @@ export default function Home() {
 
     } catch (error: any) {
       console.error(error);
-      setErrorMessage(error?.message || "Ocorreu um erro inesperado.");
+      setErrorMessage(error?.message || "Erro inesperado.");
       setStatus("error");
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col items-center justify-center p-4 selection:bg-purple-500/30">
-      
-      {/* CABEÇALHO */}
+    <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col items-center justify-center p-4">
+      {/* HEADER */}
       <div className="mb-10 text-center space-y-3">
-        <div className="flex items-center justify-center gap-2 mb-2">
-          <div className="p-2 bg-gradient-to-tr from-purple-600 to-blue-600 rounded-lg">
-            <Video className="w-6 h-6 text-white" />
-          </div>
-          <h1 className="text-4xl font-black tracking-tighter bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-            AutoShorts AI
-          </h1>
-        </div>
-        <p className="text-gray-400 text-lg">
-          Transforme links em vídeos virais em segundos.
-        </p>
+        <h1 className="text-4xl font-black bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+          AutoShorts AI
+        </h1>
+        <p className="text-gray-400">Transforme links em vídeos virais.</p>
       </div>
 
       <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        
-        {/* LADO ESQUERDO: CONTROLES */}
+        {/* ESQUERDA */}
         <div className="lg:col-span-4 space-y-6">
-          <div className="bg-[#111] p-6 rounded-2xl border border-gray-800 shadow-2xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 blur-[50px] rounded-full group-hover:bg-purple-500/20 transition-all" />
-
-            <label className="block text-sm font-semibold text-gray-300 mb-3 ml-1">
-              🔗 Link do Artigo (Wiki, Notícia, Blog)
+          <div className="bg-[#111] p-6 rounded-2xl border border-gray-800 shadow-2xl">
+            <label className="block text-sm font-semibold text-gray-300 mb-3">
+              🔗 Link do Artigo
             </label>
-            
-            <div className="relative">
-              <input
-                type="url"
-                placeholder="https://..."
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                disabled={status !== "idle" && status !== "error"}
-                className="w-full bg-[#0a0a0a] border border-gray-700 rounded-xl p-4 text-white placeholder:text-gray-600 focus:ring-2 focus:ring-purple-500 outline-none transition-all disabled:opacity-50"
-              />
-            </div>
+            <input
+              type="url"
+              placeholder="https://..."
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              disabled={status !== "idle" && status !== "error"}
+              className="w-full bg-[#0a0a0a] border border-gray-700 rounded-xl p-4 text-white focus:ring-2 focus:ring-purple-500 outline-none"
+            />
 
-            {/* BOTÕES */}
             {status === "ready" ? (
-               <div className="mt-6 space-y-3 animate-in fade-in slide-in-from-bottom-4">
-                 <button
-                   onClick={handleReset}
-                   className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all"
-                 >
-                   <RotateCcw className="w-5 h-5" />
-                   Criar Novo Vídeo (Sair)
-                 </button>
-               </div>
+               <button onClick={handleReset} className="w-full mt-6 bg-gray-800 hover:bg-gray-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2">
+                 <RotateCcw className="w-5 h-5" /> Criar Novo
+               </button>
             ) : (
               <button
                 onClick={handleGenerate}
                 disabled={status !== "idle" && status !== "error"}
-                className="w-full mt-6 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 disabled:from-gray-800 disabled:to-gray-800 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-purple-500/25 active:scale-[0.98]"
+                className="w-full mt-6 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2"
               >
-                {status !== "idle" && status !== "error" ? (
-                  <Loader2 className="animate-spin w-5 h-5" />
-                ) : (
-                  <Wand2 className="w-5 h-5" />
-                )}
-                {status === "idle" && "Gerar Mágica ✨"}
-                {status === "error" && "Tentar Novamente"}
-                {status === "scripting" && "Escrevendo Roteiro..."}
-                {status === "voicing" && "Criando Narração..."}
-                {status === "generating_images" && "Renderizando Imagens..."}
+                {status !== "idle" && status !== "error" ? <Loader2 className="animate-spin" /> : <Wand2 />}
+                {status === "idle" ? "Gerar Vídeo" : "Processando..."}
               </button>
             )}
 
-            {/* STATUS */}
-            {(status === "scripting" || status === "voicing" || status === "generating_images") && (
-              <div className="mt-6 space-y-4">
-                <div className="h-1 w-full bg-gray-800 rounded-full overflow-hidden">
-                  <div 
-                    className={`h-full bg-blue-500 transition-all duration-1000 
-                    ${status === "scripting" ? "w-1/3" : ""}
-                    ${status === "voicing" ? "w-2/3" : ""}
-                    ${status === "generating_images" ? "w-full" : ""}
-                    `} 
-                  />
-                </div>
-                <div className="space-y-2 text-sm">
-                  <StatusItem active={status === "scripting"} label="Lendo link e criando roteiro..." />
-                  <StatusItem active={status === "voicing"} label="Gerando voz neural..." />
-                  <div className={`flex items-center gap-3 p-2 rounded-lg transition-colors ${status === "generating_images" ? "bg-green-500/10 text-green-400" : "text-gray-600"}`}>
-                    {status === "generating_images" ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
-                    <span>Criando e baixando imagens (IA)...</span>
-                  </div>
-                </div>
+            {(status === "scripting" || status === "voicing") && (
+              <div className="mt-6 text-sm text-gray-400 animate-pulse text-center">
+                 {status === "scripting" ? "Lendo site e criando roteiro..." : "Gerando áudio e imagens..."}
               </div>
             )}
 
             {errorMessage && (
-              <div className="mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-200 text-sm flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 shrink-0 text-red-400" />
-                <p>{errorMessage}</p>
+              <div className="mt-6 p-4 bg-red-900/20 border border-red-900 rounded-xl text-red-200 text-sm flex gap-2">
+                <AlertCircle className="w-5 h-5" /> {errorMessage}
               </div>
             )}
           </div>
         </div>
 
-        {/* LADO DIREITO: PLAYER */}
-        <div className="lg:col-span-8 flex flex-col items-center justify-center bg-[#111] p-8 rounded-3xl border border-gray-800 min-h-[700px] relative overflow-hidden">
-          
-          <div className="absolute inset-0 opacity-20" 
-             style={{ backgroundImage: 'radial-gradient(#4b5563 1px, transparent 1px)', backgroundSize: '30px 30px' }} 
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-transparent to-transparent" />
-
+        {/* DIREITA (PLAYER) */}
+        <div className="lg:col-span-8 flex flex-col items-center justify-center bg-[#111] p-8 rounded-3xl border border-gray-800 min-h-[700px]">
           {videoProps ? (
-            <div className="flex flex-col items-center gap-6 animate-in zoom-in-50 duration-500">
-              <div className="relative z-10 shadow-2xl rounded-[3rem] overflow-hidden border-[8px] border-gray-900 bg-black outline outline-4 outline-gray-800">
+            <div className="flex flex-col items-center gap-6 animate-in zoom-in-50">
+              <div className="relative shadow-2xl rounded-[3rem] overflow-hidden border-[8px] border-gray-900 bg-black">
                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-black rounded-b-xl z-20"></div>
-                 {/* CORREÇÃO AQUI: (as any) evita o erro de strict types no build */}
                  <Player
                   component={MyVideo as any}
                   inputProps={videoProps}
@@ -234,25 +161,14 @@ export default function Home() {
                   loop
                 />
               </div>
-              <div className="flex gap-4 w-full max-w-sm z-10">
-                <button 
-                  onClick={handleDownload}
-                  className="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-6 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-green-500/20"
-                >
-                  <Download className="w-5 h-5" />
-                  Baixar Vídeo
-                </button>
-              </div>
+              <button onClick={handleDownload} className="bg-green-600 px-6 py-3 rounded-xl font-bold flex gap-2 hover:bg-green-500">
+                <Download /> Baixar Vídeo
+              </button>
             </div>
           ) : (
-            <div className="text-center z-10 opacity-40 space-y-4">
-              <div className="w-32 h-56 border-4 border-dashed border-gray-700 rounded-3xl mx-auto flex items-center justify-center bg-gray-900/50">
-                <Video className="w-12 h-12 text-gray-600" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-gray-300">Preview do Vídeo</h3>
-                <p className="text-gray-500">Seu conteúdo viral aparecerá aqui</p>
-              </div>
+            <div className="text-center opacity-40">
+              <Video className="w-12 h-12 mx-auto mb-4" />
+              <p>Preview do Vídeo</p>
             </div>
           )}
         </div>
@@ -260,10 +176,3 @@ export default function Home() {
     </div>
   );
 }
-
-const StatusItem = ({ active, label }: { active: boolean, label: string }) => (
-  <div className={`flex items-center gap-3 p-2 rounded-lg transition-colors ${active ? "bg-blue-500/10 text-blue-400" : "text-gray-600"}`}>
-    {active ? <Loader2 className="w-4 h-4 animate-spin" /> : <div className="w-4 h-4 rounded-full bg-gray-700" />}
-    <span>{label}</span>
-  </div>
-);

@@ -28,55 +28,46 @@ export const MyVideo = ({
   imageUrls,
 }: MyVideoProps) => {
   const frame = useCurrentFrame();
-  const { fps, durationInFrames } = useVideoConfig(); // Pegamos a duração total exata do vídeo
+  const { fps, durationInFrames } = useVideoConfig();
 
-  // 1. Fallback robusto
-  const finalImages =
-    imageUrls && imageUrls.length > 0
-      ? imageUrls
-      : ["https://picsum.photos/seed/fallback/1080/1920"];
+  // 1. Fallbacks de segurança
+  const validImages = imageUrls && imageUrls.length > 0 ? imageUrls : ["https://picsum.photos/seed/fallback/720/1280"];
 
-  // 2. Cálculo Matemático Preciso
-  // Dividimos o total de frames pelo número de imagens
-  const durationPerImage = durationInFrames / finalImages.length;
+  // 2. Tempo por imagem (Troca a cada 4 segundos ou divide igualmente se for curto)
+  // Se o vídeo for longo, fixamos em 4s por imagem para dar dinamismo
+  const framesPerImage = 120; 
+  const totalScenes = Math.ceil(durationInFrames / framesPerImage);
 
-  // 3. Lógica da Legenda Atual
   const currentTime = frame / fps;
   const activeCaption = captions.find(
     (c) => currentTime >= c.start && currentTime <= c.end
   );
 
   return (
-    <AbsoluteFill style={{ backgroundColor: "black" }}>
+    <AbsoluteFill style={{ backgroundColor: "#000" }}>
       {audioBase64 && <Audio src={audioBase64} />}
 
+      {/* Camada de Imagens em Loop */}
       <AbsoluteFill>
-        {finalImages.map((src, index) => {
-          // Onde começa
-          const fromFrame = Math.floor(index * durationPerImage);
+        {Array.from({ length: totalScenes }).map((_, i) => {
+          // Loop infinito das imagens disponíveis
+          const src = validImages[i % validImages.length];
+          const startFrame = i * framesPerImage;
           
-          // Onde termina: Se for a última imagem, vai até o fim do vídeo
-          // Se não, vai até o começo da próxima
-          const isLastImage = index === finalImages.length - 1;
-          const endFrame = isLastImage ? durationInFrames : Math.floor((index + 1) * durationPerImage);
-          
-          const duration = endFrame - fromFrame;
-
-          // Ken Burns
-          const frameSinceStart = frame - fromFrame;
+          const frameSinceStart = frame - startFrame;
           const scale = interpolate(
             frameSinceStart,
-            [0, duration],
-            [1, 1.15],
+            [0, framesPerImage],
+            [1, 1.15], // Zoom suave
             { extrapolateRight: "clamp" }
           );
 
           return (
             <Sequence
-              key={index}
-              from={fromFrame}
-              durationInFrames={duration} // Agora usamos a duração exata calculada
-              layout="none" // Importante para não criar divs extras
+              key={i}
+              from={startFrame}
+              durationInFrames={framesPerImage}
+              layout="none"
             >
               <AbsoluteFill style={{ overflow: "hidden" }}>
                 <Img
@@ -90,19 +81,16 @@ export const MyVideo = ({
                     objectFit: "cover",
                     transform: `scale(${scale})`,
                   }}
-                  // Fallback se a imagem da Pollinations falhar
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    target.src = "https://picsum.photos/seed/error/1080/1920";
-                  }}
+                  // Se der erro, fica transparente e mostra o fundo preto (menos feio que erro crítico)
+                  onError={(e) => (e.currentTarget.style.display = "none")}
                 />
-                <div style={{ position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.4)" }} />
               </AbsoluteFill>
             </Sequence>
           );
         })}
       </AbsoluteFill>
 
+      {/* Camada de Legendas */}
       <AbsoluteFill
         style={{
           justifyContent: "center",
@@ -111,7 +99,7 @@ export const MyVideo = ({
         }}
       >
         {activeCaption ? (
-          <WordAnimation frame={frame} fps={fps} word={activeCaption.word} />
+          <WordAnimation key={activeCaption.start} frame={frame} fps={fps} word={activeCaption.word} />
         ) : null}
       </AbsoluteFill>
     </AbsoluteFill>
@@ -129,14 +117,14 @@ const WordAnimation = ({ frame, fps, word }: { frame: number; fps: number; word:
     <div style={{ transform: `scale(${scale})`, position: "relative", zIndex: 10 }}>
       <h1
         style={{
-          fontFamily: "Montserrat, sans-serif", // Fonte mais moderna
+          fontFamily: "Arial, sans-serif",
           fontWeight: 900,
-          fontSize: "85px",
+          fontSize: "80px",
           textAlign: "center",
           color: "white",
           textTransform: "uppercase",
-          lineHeight: 1,
-          textShadow: "4px 4px 0 #000", // Sombra dura estilo TikTok
+          textShadow: "4px 4px 0 #000",
+          margin: 0,
           padding: "0 20px"
         }}
       >
@@ -145,3 +133,4 @@ const WordAnimation = ({ frame, fps, word }: { frame: number; fps: number; word:
     </div>
   );
 };
+
