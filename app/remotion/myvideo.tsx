@@ -28,28 +28,17 @@ export const MyVideo = ({
   imageUrls,
 }: MyVideoProps) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, durationInFrames } = useVideoConfig(); // Pegamos a duração total exata do vídeo
 
-  // 1. Fallback: Se não vier imagens, usa placeholders (Evita tela preta)
+  // 1. Fallback robusto
   const finalImages =
     imageUrls && imageUrls.length > 0
       ? imageUrls
-      : [
-          "https://picsum.photos/seed/fallback1/1080/1920",
-          "https://picsum.photos/seed/fallback2/1080/1920",
-        ];
+      : ["https://picsum.photos/seed/fallback/1080/1920"];
 
-  // 2. Cálculo de duração
-  // Garante que o vídeo tenha no mínimo 5 segundos se não houver legendas
-  const durationInSeconds = 
-    captions && captions.length > 0 
-      ? captions[captions.length - 1].end + 1 // +1s de margem no final
-      : 5;
-      
-  const totalFrames = Math.ceil(durationInSeconds * fps);
-  
-  // Garante que durationPerImage nunca seja Zero ou Infinito
-  const durationPerImage = totalFrames / finalImages.length;
+  // 2. Cálculo Matemático Preciso
+  // Dividimos o total de frames pelo número de imagens
+  const durationPerImage = durationInFrames / finalImages.length;
 
   // 3. Lógica da Legenda Atual
   const currentTime = frame / fps;
@@ -59,25 +48,26 @@ export const MyVideo = ({
 
   return (
     <AbsoluteFill style={{ backgroundColor: "black" }}>
-      {/* --- CAMADA 1: ÁUDIO --- */}
       {audioBase64 && <Audio src={audioBase64} />}
 
-      {/* --- CAMADA 2: BACKGROUND (IMAGENS) --- */}
       <AbsoluteFill>
         {finalImages.map((src, index) => {
-          // Onde essa imagem começa na timeline
+          // Onde começa
           const fromFrame = Math.floor(index * durationPerImage);
-          // Quanto tempo ela dura
-          const durationFrame = Math.ceil(durationPerImage);
-
-          // Efeito Ken Burns (Zoom Lento)
-          // Calculamos o progresso baseado no tempo de vida DESTA imagem
-          const frameSinceStart = frame - fromFrame;
           
+          // Onde termina: Se for a última imagem, vai até o fim do vídeo
+          // Se não, vai até o começo da próxima
+          const isLastImage = index === finalImages.length - 1;
+          const endFrame = isLastImage ? durationInFrames : Math.floor((index + 1) * durationPerImage);
+          
+          const duration = endFrame - fromFrame;
+
+          // Ken Burns
+          const frameSinceStart = frame - fromFrame;
           const scale = interpolate(
             frameSinceStart,
-            [0, durationFrame],
-            [1, 1.15], // Zoom de 100% para 115%
+            [0, duration],
+            [1, 1.15],
             { extrapolateRight: "clamp" }
           );
 
@@ -85,9 +75,9 @@ export const MyVideo = ({
             <Sequence
               key={index}
               from={fromFrame}
-              durationInFrames={durationFrame}
+              durationInFrames={duration} // Agora usamos a duração exata calculada
+              layout="none" // Importante para não criar divs extras
             >
-              {/* FIX CRÍTICO: AbsoluteFill garante que a div ocupe 1080x1920 exato */}
               <AbsoluteFill style={{ overflow: "hidden" }}>
                 <Img
                   src={src}
@@ -97,30 +87,26 @@ export const MyVideo = ({
                     left: 0,
                     width: "100%",
                     height: "100%",
-                    objectFit: "cover", // Garante que a imagem preencha tudo sem distorcer
+                    objectFit: "cover",
                     transform: `scale(${scale})`,
                   }}
+                  // Fallback se a imagem da Pollinations falhar
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.src = "https://picsum.photos/seed/error/1080/1920";
+                  }}
                 />
-                {/* Overlay escuro para melhorar leitura do texto */}
-                <div 
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    backgroundColor: "rgba(0,0,0,0.3)" 
-                  }} 
-                />
+                <div style={{ position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.4)" }} />
               </AbsoluteFill>
             </Sequence>
           );
         })}
       </AbsoluteFill>
 
-      {/* --- CAMADA 3: LEGENDAS --- */}
       <AbsoluteFill
         style={{
           justifyContent: "center",
           alignItems: "center",
-          // Sobe um pouco o texto para não ficar no rodapé
           paddingBottom: "150px", 
         }}
       >
@@ -132,34 +118,29 @@ export const MyVideo = ({
   );
 };
 
-// Componente visual do texto (extraído para performance)
 const WordAnimation = ({ frame, fps, word }: { frame: number; fps: number; word: string }) => {
   const scale = spring({
     frame: frame % 5,
     fps,
-    config: { damping: 10, stiffness: 100 },
+    config: { damping: 12, stiffness: 200 },
   });
 
   return (
     <div style={{ transform: `scale(${scale})`, position: "relative", zIndex: 10 }}>
       <h1
         style={{
-          fontFamily: "sans-serif",
+          fontFamily: "Montserrat, sans-serif", // Fonte mais moderna
           fontWeight: 900,
-          fontSize: "90px",
+          fontSize: "85px",
           textAlign: "center",
           color: "white",
           textTransform: "uppercase",
           lineHeight: 1,
-          margin: 0,
-          // Borda preta grossa para leitura em qualquer fundo
-          textShadow: 
-            "3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000",
+          textShadow: "4px 4px 0 #000", // Sombra dura estilo TikTok
+          padding: "0 20px"
         }}
       >
-        <span style={{ color: "#fbbf24" }}> {/* Amarelo Ouro */}
-          {word}
-        </span>
+        <span style={{ color: "#fbbf24" }}>{word}</span>
       </h1>
     </div>
   );
