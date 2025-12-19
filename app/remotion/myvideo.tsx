@@ -30,9 +30,13 @@ export const MyVideo = ({
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
 
-  // CÁLCULO DE SINCRONIA PRECISA
-  // Temos certeza que imageUrls não é null porque o Page.tsx travou o carregamento
-  const durationPerImage = durationInFrames / imageUrls.length;
+  // GARANTIA: Se o Page.tsx fez o trabalho dele, aqui tem 7 imagens.
+  // Se não, o fallback entra em ação.
+  const images = imageUrls && imageUrls.length > 0 ? imageUrls : ["https://picsum.photos/seed/error/720/1280"];
+
+  // CÁLCULO PRECISO: Frames Totais / Número de Imagens
+  // Math.floor para evitar números quebrados, mas somamos o resto na última imagem
+  const framesPerImage = Math.floor(durationInFrames / images.length);
 
   const currentTime = frame / fps;
   const activeCaption = captions.find(
@@ -44,19 +48,22 @@ export const MyVideo = ({
       {audioBase64 && <Audio src={audioBase64} />}
 
       <AbsoluteFill>
-        {imageUrls.map((src, index) => {
-          // Matemática de frames inteiros para evitar falhas
-          const startFrame = Math.floor(index * durationPerImage);
+        {images.map((src, index) => {
+          const from = index * framesPerImage;
           
-          // O último frame vai forçosamente até o fim do vídeo
-          const endFrame = index === imageUrls.length - 1 
+          // Lógica Especial para a Última Imagem:
+          // Ela pega todos os frames restantes até o fim do vídeo.
+          // Isso evita aquele "flash preto" de 1 frame no final por erro de arredondamento.
+          const to = index === images.length - 1 
             ? durationInFrames 
-            : Math.floor((index + 1) * durationPerImage);
+            : (index + 1) * framesPerImage;
             
-          const duration = endFrame - startFrame;
+          const duration = to - from;
 
-          // Ken Burns suave
-          const frameSinceStart = frame - startFrame;
+          // Se a duração for <= 0 por algum erro bizarro, pula
+          if (duration <= 0) return null;
+
+          const frameSinceStart = frame - from;
           const scale = interpolate(
             frameSinceStart,
             [0, duration],
@@ -67,9 +74,8 @@ export const MyVideo = ({
           return (
             <Sequence
               key={index}
-              from={startFrame}
+              from={from}
               durationInFrames={duration}
-              // Sequence cria um contexto de tempo relativo
             >
               <AbsoluteFill style={{ overflow: "hidden" }}>
                 <Img
@@ -91,7 +97,6 @@ export const MyVideo = ({
         })}
       </AbsoluteFill>
 
-      {/* Legendas */}
       <AbsoluteFill
         style={{
           justifyContent: "center",
@@ -100,7 +105,7 @@ export const MyVideo = ({
         }}
       >
         {activeCaption ? (
-          <WordAnimation key={activeCaption.start} frame={frame} fps={fps} word={activeCaption.word} />
+          <WordAnimation key={activeCaption.start + activeCaption.word} frame={frame} fps={fps} word={activeCaption.word} />
         ) : null}
       </AbsoluteFill>
     </AbsoluteFill>
