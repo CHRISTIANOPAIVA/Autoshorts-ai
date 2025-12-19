@@ -21,7 +21,7 @@ export default function Home() {
   const [videoProps, setVideoProps] = useState<MyVideoProps | null>(null);
   const [durationInFrames, setDurationInFrames] = useState(300);
   const [errorMessage, setErrorMessage] = useState("");
-  const [loadingProgress, setLoadingProgress] = useState(""); // Para mostrar o que está a acontecer
+  const [loadingProgress, setLoadingProgress] = useState("");
 
   const handleReset = () => {
     setUrl("");
@@ -31,29 +31,56 @@ export default function Home() {
     setLoadingProgress("");
   };
 
-  const handleDownload = () => {
-    alert("Para descarregar o ficheiro .MP4 final, seria necessário um servidor de renderização na nuvem. Esta é uma pré-visualização web em tempo real.");
+  // --- LÓGICA DE DOWNLOAD ROBUSTA ---
+
+  // 1. Tenta baixar uma única imagem. Se falhar, tenta de novo 3 vezes.
+  const downloadImageWithRetry = async (src: string, attempt = 1): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.src = src;
+      img.onload = () => resolve(src);
+      img.onerror = () => {
+        if (attempt < 3) {
+          // Se falhar, espera 1 segundo e tenta de novo (Recursividade)
+          console.warn(`Tentativa ${attempt} falhou para ${src}. Tentando novamente...`);
+          setTimeout(() => {
+            downloadImageWithRetry(src, attempt + 1).then(resolve).catch(reject);
+          }, 1000);
+        } else {
+          reject(new Error("Falha ao baixar imagem após 3 tentativas"));
+        }
+      };
+    });
   };
 
-  // FUNÇÃO CRÍTICA: Obriga o navegador a descarregar a imagem antes de prosseguir
-  const preloadImages = async (imageUrls: string[]) => {
-    const promises = imageUrls.map((src, index) => {
-      return new Promise<string | null>((resolve) => {
-        const img = new Image();
-        img.src = src;
-        img.onload = () => {
-          console.log(`Imagem ${index + 1} carregada.`);
-          resolve(src);
-        };
-        img.onerror = () => {
-          console.warn(`Falha ao carregar imagem: ${src}`);
-          resolve(null); // Resolve como null para não bloquear tudo
-        };
-      });
-    });
+  // 2. Processa a lista um por um para não bloquear a API
+  const processImagesSequentially = async (prompts: string[]) => {
+    const finalImages: string[] = [];
 
-    // Espera que TODAS terminem (com sucesso ou erro)
-    return Promise.all(promises);
+    for (let i = 0; i < prompts.length; i++) {
+      const prompt = prompts[i];
+      setLoadingProgress(`Baixando imagem ${i + 1} de ${prompts.length} em Alta Definição...`);
+      
+      // Adicionamos um número aleatório (seed) para garantir que a imagem mude
+      const seed = Math.floor(Math.random() * 10000);
+      const enhancedPrompt = `${prompt}, cinematic lighting, photorealistic, vertical wallpaper`;
+      const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=720&height=1280&nologo=true&model=flux&seed=${seed}`;
+
+      try {
+        // AWAIT aqui é crucial: O código PARA e espera a imagem baixar
+        const confirmedUrl = await downloadImageWithRetry(imageUrl);
+        finalImages.push(confirmedUrl);
+        
+        // Pequena pausa para a API não nos bloquear (500ms)
+        await new Promise(r => setTimeout(r, 500));
+        
+      } catch (error) {
+        console.error(`Erro fatal na imagem ${i + 1}:`, error);
+        throw new Error(`Não foi possível gerar a imagem da cena ${i + 1}. Tente novamente.`);
+      }
+    }
+
+    return finalImages;
   };
 
   const handleGenerate = async () => {
@@ -64,72 +91,60 @@ export default function Home() {
 
     try {
       // 1. ROTEIRO
-      setLoadingProgress("A ler o artigo e a escrever o guião...");
+      setLoadingProgress("Lendo conteúdo e criando roteiro...");
       const scriptRes = await fetch("/api/create-script", {
         method: "POST",
         body: JSON.stringify({ url }),
         headers: { "Content-Type": "application/json" },
       });
 
-      if (!scriptRes.ok) throw new Error("Não foi possível ler este URL. Tente outro sítio.");
+      if (!scriptRes.ok) throw new Error("Erro ao ler URL.");
       const scriptData = await scriptRes.json();
 
       // 2. ÁUDIO
       setStatus("voicing");
-      setLoadingProgress("A gerar narração neural...");
+      setLoadingProgress("Narrando o texto (IA Neural)...");
       const audioRes = await fetch("/api/generate-audio", {
         method: "POST",
         body: JSON.stringify({ text: scriptData.script_text }), 
         headers: { "Content-Type": "application/json" },
       });
 
-      if (!audioRes.ok) throw new Error("Falha ao gerar o áudio.");
+      if (!audioRes.ok) throw new Error("Erro ao criar áudio.");
       const audioData = await audioRes.json();
 
-      // 3. IMAGENS (PRÉ-CARREGAMENTO FORÇADO)
+      // 3. IMAGENS (SEQUENCIAL E OBRIGATÓRIO)
       setStatus("generating_images");
-      setLoadingProgress(`A criar e descarregar ${scriptData.visual_keywords?.length || 5} imagens de IA... (Aguarde)`);
       
-      const rawImageUrls = (scriptData.visual_keywords || []).map((prompt: string) => {
-        // Usamos 720p para ser mais rápido, mas mantemos qualidade suficiente
-        const enhancedPrompt = `${prompt}, cinematic lighting, photorealistic, vertical wallpaper`;
-        return `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=720&height=1280&nologo=true&model=flux`;
-      });
-
-      // O "AWAIT" AQUI É O QUE RESOLVE O PROBLEMA DO ECRÃ PRETO
-      const loadedImages = await preloadImages(rawImageUrls);
+      // Garante que temos prompts
+      const prompts = scriptData.visual_keywords || ["Tech background", "Abstract connection"];
       
-      // Removemos imagens que falharam (null)
-      const validImages = loadedImages.filter(img => img !== null) as string[];
+      // CHAMA A FUNÇÃO QUE TRAVA TUDO ATÉ ACABAR
+      const readyImages = await processImagesSequentially(prompts);
 
-      // Se todas falharem, usamos backups
-      const finalImages = validImages.length > 0 ? validImages : [
-        "https://picsum.photos/seed/backup1/720/1280",
-        "https://picsum.photos/seed/backup2/720/1280"
-      ];
-
-      // Cálculo de Duração
+      // Se chegou aqui, temos TODAS as imagens baixadas.
+      
       const lastCaptionEnd = audioData.captions?.[audioData.captions.length - 1]?.end ?? 30;
-      const calculatedDuration = Math.ceil(lastCaptionEnd * 30) + 60; // +2s de margem
+      const calculatedDuration = Math.ceil(lastCaptionEnd * 30) + 60;
 
       setVideoProps({
         audioBase64: audioData.audio_base64,
         captions: audioData.captions,
-        imageUrls: finalImages,
+        imageUrls: readyImages,
       });
       setDurationInFrames(calculatedDuration);
       setStatus("ready");
 
     } catch (error: any) {
       console.error(error);
-      setErrorMessage(error?.message || "Ocorreu um erro inesperado.");
+      setErrorMessage(error?.message || "Erro inesperado.");
       setStatus("error");
     }
   };
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col items-center justify-center p-4">
-      {/* CABEÇALHO */}
+      {/* HEADER */}
       <div className="mb-10 text-center space-y-3">
         <h1 className="text-4xl font-black bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
           AutoShorts AI
@@ -138,10 +153,9 @@ export default function Home() {
       </div>
 
       <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* COLUNA ESQUERDA */}
+        {/* ESQUERDA */}
         <div className="lg:col-span-4 space-y-6">
-          <div className="bg-[#111] p-6 rounded-2xl border border-gray-800 shadow-2xl relative overflow-hidden">
-            
+          <div className="bg-[#111] p-6 rounded-2xl border border-gray-800 shadow-2xl">
             <label className="block text-sm font-semibold text-gray-300 mb-3">
               🔗 Link do Artigo
             </label>
@@ -162,21 +176,23 @@ export default function Home() {
               <button
                 onClick={handleGenerate}
                 disabled={status !== "idle" && status !== "error"}
-                className="w-full mt-6 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all"
+                className="w-full mt-6 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2"
               >
                 {status !== "idle" && status !== "error" ? <Loader2 className="animate-spin" /> : <Wand2 />}
-                {status === "idle" ? "Gerar Vídeo" : "A Processar..."}
+                {status === "idle" ? "Gerar Vídeo" : "Aguarde..."}
               </button>
             )}
 
             {/* STATUS DETALHADO */}
             {(status !== "idle" && status !== "ready" && status !== "error") && (
-              <div className="mt-6 space-y-3 text-center animate-pulse">
-                 <div className="text-sm text-blue-400 font-medium">
+              <div className="mt-6 space-y-3 text-center">
+                 <div className="text-sm text-blue-400 font-bold animate-pulse">
                    {loadingProgress}
                  </div>
                  {status === "generating_images" && (
-                   <div className="text-xs text-gray-500">Isto pode demorar 10-20 segundos para garantir a sincronia.</div>
+                   <div className="w-full bg-gray-800 rounded-full h-2 mt-2 overflow-hidden">
+                     <div className="h-full bg-blue-500 animate-pulse w-full"></div>
+                   </div>
                  )}
               </div>
             )}
@@ -189,7 +205,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* COLUNA DIREITA (LEITOR) */}
+        {/* DIREITA */}
         <div className="lg:col-span-8 flex flex-col items-center justify-center bg-[#111] p-8 rounded-3xl border border-gray-800 min-h-[700px]">
           {videoProps ? (
             <div className="flex flex-col items-center gap-6 animate-in zoom-in-50">
@@ -208,14 +224,11 @@ export default function Home() {
                   loop
                 />
               </div>
-              <button onClick={handleDownload} className="bg-green-600 px-6 py-3 rounded-xl font-bold flex gap-2 hover:bg-green-500 text-white">
-                <Download /> Baixar Vídeo
-              </button>
             </div>
           ) : (
             <div className="text-center opacity-40">
               <Video className="w-12 h-12 mx-auto mb-4" />
-              <p>A pré-visualização aparecerá aqui</p>
+              <p>O vídeo só aparecerá quando estiver 100% pronto.</p>
             </div>
           )}
         </div>

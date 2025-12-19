@@ -10,7 +10,6 @@
 } from "remotion";
 import React from "react";
 
-// --- TIPAGENS ---
 export interface Caption {
   word: string;
   start: number;
@@ -23,7 +22,6 @@ export interface MyVideoProps {
   imageUrls: string[];
 }
 
-// --- COMPONENTE PRINCIPAL ---
 export const MyVideo = ({
   audioBase64,
   captions,
@@ -32,48 +30,32 @@ export const MyVideo = ({
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
 
-  // 1. BLINDAGEM DE DADOS (FALLBACK)
-  // Se a lista vier nula ou vazia, usamos placeholder para não dar erro de "map of undefined"
-  const safeImages = (imageUrls && imageUrls.length > 0) 
-    ? imageUrls 
-    : ["https://picsum.photos/seed/fallback/720/1280"];
+  // CÁLCULO DE SINCRONIA PRECISA
+  // Temos certeza que imageUrls não é null porque o Page.tsx travou o carregamento
+  const durationPerImage = durationInFrames / imageUrls.length;
 
-  // 2. CÁLCULO DE TEMPO "À PROVA DE ERRO"
-  // Divide o tempo total pelo número de imagens
-  const durationPerImage = durationInFrames / safeImages.length;
-
-  // 3. LÓGICA DE LEGENDA (KARAOKÊ)
   const currentTime = frame / fps;
-  const activeCaption = (captions || []).find(
+  const activeCaption = captions.find(
     (c) => currentTime >= c.start && currentTime <= c.end
   );
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#000" }}>
-      {/* CAMADA 1: ÁUDIO */}
       {audioBase64 && <Audio src={audioBase64} />}
 
-      {/* CAMADA 2: IMAGENS */}
       <AbsoluteFill>
-        {safeImages.map((src, index) => {
-          // --- MATEMÁTICA RÍGIDA PARA FRAMES (SEM DECIMAIS) ---
-          
-          // Frame inicial desta imagem (arredondado para baixo)
+        {imageUrls.map((src, index) => {
+          // Matemática de frames inteiros para evitar falhas
           const startFrame = Math.floor(index * durationPerImage);
           
-          // Frame final: Se for a última imagem, vai até o fim do vídeo. 
-          // Se não, vai até o início da próxima.
-          const endFrame = index === safeImages.length - 1 
+          // O último frame vai forçosamente até o fim do vídeo
+          const endFrame = index === imageUrls.length - 1 
             ? durationInFrames 
             : Math.floor((index + 1) * durationPerImage);
             
-          // Duração exata desta cena
           const duration = endFrame - startFrame;
 
-          // Se a duração for inválida (<= 0), não renderiza (evita crash)
-          if (duration <= 0) return null;
-
-          // Efeito Ken Burns (Zoom)
+          // Ken Burns suave
           const frameSinceStart = frame - startFrame;
           const scale = interpolate(
             frameSinceStart,
@@ -87,8 +69,7 @@ export const MyVideo = ({
               key={index}
               from={startFrame}
               durationInFrames={duration}
-              // Removi layout="none" pois pode dar erro em versões antigas. 
-              // AbsoluteFill abaixo resolve o posicionamento.
+              // Sequence cria um contexto de tempo relativo
             >
               <AbsoluteFill style={{ overflow: "hidden" }}>
                 <Img
@@ -102,52 +83,33 @@ export const MyVideo = ({
                     objectFit: "cover",
                     transform: `scale(${scale})`,
                   }}
-                  // Fallback visual silencioso
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    target.style.display = 'none'; 
-                  }}
                 />
-                {/* Sombra Gradiente para a legenda aparecer melhor */}
-                <div 
-                  style={{ 
-                    position: "absolute", 
-                    inset: 0, 
-                    background: "linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 40%)" 
-                  }} 
-                />
+                <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.3)" }} />
               </AbsoluteFill>
             </Sequence>
           );
         })}
       </AbsoluteFill>
 
-      {/* CAMADA 3: LEGENDA ANIMADA */}
+      {/* Legendas */}
       <AbsoluteFill
         style={{
-          justifyContent: "flex-end", // Joga para baixo
+          justifyContent: "center",
           alignItems: "center",
-          paddingBottom: "180px", // Margem inferior
+          paddingBottom: "150px", 
         }}
       >
         {activeCaption ? (
-          <WordAnimation 
-            // Key força o React a reiniciar a animação a cada palavra nova
-            key={activeCaption.start + activeCaption.word} 
-            frame={frame} 
-            fps={fps} 
-            word={activeCaption.word} 
-          />
+          <WordAnimation key={activeCaption.start} frame={frame} fps={fps} word={activeCaption.word} />
         ) : null}
       </AbsoluteFill>
     </AbsoluteFill>
   );
 };
 
-// --- SUB-COMPONENTE DE ANIMAÇÃO DE TEXTO ---
 const WordAnimation = ({ frame, fps, word }: { frame: number; fps: number; word: string }) => {
   const scale = spring({
-    frame: frame % 5, // Reinicia o spring a cada mount
+    frame: frame % 5,
     fps,
     config: { damping: 12, stiffness: 200 },
   });
@@ -162,9 +124,7 @@ const WordAnimation = ({ frame, fps, word }: { frame: number; fps: number; word:
           textAlign: "center",
           color: "white",
           textTransform: "uppercase",
-          // Borda preta sólida
-          textShadow: 
-            "3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000",
+          textShadow: "4px 4px 0 #000",
           margin: 0,
           padding: "0 20px"
         }}
