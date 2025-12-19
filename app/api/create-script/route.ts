@@ -1,32 +1,24 @@
-import { openai } from "@ai-sdk/openai";
+﻿import { openai } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { scrapeContent } from "@/lib/scraper";
 
 export const maxDuration = 60;
 
-// MUDAN€A 1: O Schema agora exige descri‡äes visuais, nÆo keywords soltas
 const ScriptSchema = z.object({
-  script_text: z.string().describe("O roteiro narrado completo, vibrante e engajador."),
-  visual_keywords: z.array(z.string()).describe("5 a 7 prompts descritivos para um gerador de imagem AI. Devem descrever CENAS FÖSICAS."),
+  script_text: z.string().describe("O guião narrado completo em Português."),
+  visual_keywords: z.array(z.string())
+    .min(7)
+    .describe("7 descrições visuais FÍSICAS em Inglês para o gerador de imagem."),
 });
 
 export async function POST(req: Request) {
   try {
     const { url } = await req.json();
 
-    if (!url) {
-      return new Response(JSON.stringify({ error: "URL ‚ obrigat¢ria" }), { status: 400 });
-    }
+    if (!url) return new Response(JSON.stringify({ error: "URL obrigatório" }), { status: 400 });
 
-    console.log(`?? Iniciando scraping de: ${url}`);
     const pageContent = await scrapeContent(url);
-    
-    if (pageContent.length < 100) {
-      return new Response(JSON.stringify({ error: "Conte£do insuficiente encontrado na p gina." }), { status: 422 });
-    }
-
-    console.log("?? Enviando para o GPT-4o...");
     
     const result = await generateObject({
       model: openai("gpt-4o"),
@@ -34,36 +26,40 @@ export async function POST(req: Request) {
       messages: [
         {
           role: "system",
-          content: `Vocˆ ‚ um diretor de v¡deo experiente em criar conte£do viral. 
+          content: `Atue como um Especialista em Engenharia de Prompt Visual.
           
-          SUA MISSÇO:
-          1. Ler o texto fornecido.
-          2. Criar um roteiro narrado de 60 segundos (aprox 150 palavras) que seja empolgante.
+          TAREFA:
+          1. Analise o texto e crie uma narração engajadora de 60s.
+          2. Crie 7 PROMPTS PARA IMAGENS que ilustrem o conteúdo.
           
-          IMPORTANTE SOBRE AS IMAGENS (visual_keywords):
-          NÆo retorne palavras abstratas como "sucesso" ou "futuro". O gerador de imagens nÆo entende isso.
-          Vocˆ deve retornar PROMPTS DESCRITIVOS de cenas f¡sicas em inglˆs.
+          REGRA DE OURO (CONTEXTO VISUAL):
+          O gerador de imagens é literal. Você NÃO deve usar nomes próprios ambíguos ou conceitos abstratos. Você deve "traduzir" o conceito para uma CENA FÍSICA.
           
-          RUIM: ["happiness", "technology", "future"]
-          BOM: ["a happy woman smiling holding a trophy", "a futuristic glowing microchip close up", "a cyberpunk city skyline at night"]
+          DIRETRIZES GERAIS PARA QUALQUER ASSUNTO:
           
-          Retorne APENAS o JSON.`
+          1. SE FOR UMA EMPRESA (Ex: Apple, Shell, Amazon):
+             - Não use apenas o nome. Descreva o prédio, a loja, o produto físico ou o logotipo brilhante em um escritório moderno.
+             
+          2. SE FOR UM ANIMAL OU SER VIVO COM NOME COMPOSTO:
+             - Descreva a aparência física do animal.
+             - Exemplo: Não diga "Sea Horse", diga "small aquatic creature with a curved tail underwater".
+             
+          3. SE FOR UM CONCEITO ABSTRATO (Ex: Economia, Amor, Política):
+             - Use uma metáfora visual.
+             - Exemplo: "Economia" -> "stock market chart with rising arrows on a screen".
+             
+          4. SE FOR UM LUGAR:
+             - Descreva a arquitetura, o clima e a iluminação.
+             
+          O SEU OBJETIVO É EVITAR ALUCINAÇÕES DA IA DESCREVENDO A CENA VISUAL EXATA.`
         },
-        {
-          role: "user",
-          content: `Texto fonte:\n\n${pageContent}`
-        }
+        { role: "user", content: `Conteúdo original:\n${pageContent}` }
       ],
     });
 
-    return new Response(JSON.stringify(result.object), { 
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return new Response(JSON.stringify(result.object), { status: 200 });
 
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Erro interno no servidor";
-    console.error("? Erro na API create-script:", error);
-    return new Response(JSON.stringify({ error: message }), { status: 500 });
+  } catch (error: any) {
+    return new Response(JSON.stringify({ error: error.message }), { status: 500 });
   }
 }
