@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Player } from "@remotion/player";
 import { MyVideo, MyVideoProps } from "./remotion/myvideo";
-import { Loader2, AlertCircle, RotateCcw, Video, Wand2 } from "lucide-react";
+import { Loader2, RotateCcw, Video, Wand2, Download, CheckCircle2, XCircle } from "lucide-react";
 
 type Status = "idle" | "scripting" | "voicing" | "generating_images" | "ready" | "error";
 
@@ -14,6 +14,11 @@ export default function Home() {
   const [durationInFrames, setDurationInFrames] = useState(300);
   const [errorMessage, setErrorMessage] = useState("");
   const [loadingProgress, setLoadingProgress] = useState("");
+  type ExportStatus = "idle" | "exporting" | "done" | "error";
+  const [exportStatus, setExportStatus] = useState<ExportStatus>("idle");
+  const [exportPercent, setExportPercent] = useState(0);
+  const [exportStage, setExportStage] = useState("");
+  const [exportError, setExportError] = useState("");
 
   const handleReset = () => {
     setUrl("");
@@ -23,51 +28,16 @@ export default function Home() {
     setLoadingProgress("");
   };
 
-  const ensureSevenPrompts = (prompts: string[]): string[] => {
-    let newPrompts = [...prompts];
-    if (newPrompts.length === 0) newPrompts = ["abstract cinematic background", "minimalist landscape"];
-    while (newPrompts.length < 7) {
-      newPrompts.push(newPrompts[Math.floor(Math.random() * newPrompts.length)]);
-    }
-    return newPrompts.slice(0, 7);
-  };
-
-  const downloadImageWithRetry = async (src: string, attempt = 1): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.src = src;
-      img.onload = () => resolve(src);
-      img.onerror = () => {
-        if (attempt < 3) {
-          setTimeout(() => downloadImageWithRetry(src, attempt + 1).then(resolve).catch(reject), 1000);
-        } else {
-          console.warn("Falha na imagem. Usando backup.");
-          resolve(`https://picsum.photos/seed/fail_${Math.random()}/540/960`); 
-        }
-      };
+  const generateImages = async (prompts: string[], mainSubject: string): Promise<string[]> => {
+    setLoadingProgress("A gerar imagens com IA...");
+    const res = await fetch("/api/generate-images", {
+      method: "POST",
+      body: JSON.stringify({ prompts, mainSubject }),
+      headers: { "Content-Type": "application/json" },
     });
-  };
-
-  const processImagesSequentially = async (prompts: string[]) => {
-    const finalImages: string[] = [];
-    const normalizedPrompts = ensureSevenPrompts(prompts);
-
-    for (let i = 0; i < normalizedPrompts.length; i++) {
-      const prompt = normalizedPrompts[i];
-      setLoadingProgress(`A gerar cena ${i + 1} de 7 (Modo Rápido)...`);
-      
-      const seed = Math.floor(Math.random() * 50000);
-      
-      // MANTIDO: Otimizado para velocidade (540x960)
-      const enhancedPrompt = `${prompt}, photorealistic, vertical, cinematic lighting`;
-      const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=540&height=960&nologo=true&model=flux&seed=${seed}`;
-
-      const confirmedUrl = await downloadImageWithRetry(imageUrl);
-      finalImages.push(confirmedUrl);
-      
-      await new Promise(r => setTimeout(r, 150));
-    }
-    return finalImages;
+    if (!res.ok) throw new Error("Erro ao gerar imagens.");
+    const data = await res.json();
+    return data.imageUrls as string[];
   };
 
   const handleGenerate = async () => {
@@ -99,7 +69,8 @@ export default function Home() {
       const audioData = await audioRes.json();
 
       setStatus("generating_images");
-      const readyImages = await processImagesSequentially(scriptData.visual_keywords || []);
+      console.log(`[Script] Main subject: "${scriptData.main_subject}"`);
+      const readyImages = await generateImages(scriptData.image_prompts || [], scriptData.main_subject || "");
 
       const lastTimestamp = audioData.captions?.[audioData.captions.length - 1]?.end ?? 30;
       const totalFrames = Math.ceil((lastTimestamp + 1) * 30);
@@ -116,6 +87,69 @@ export default function Home() {
       console.error(error);
       setErrorMessage(error?.message || "Erro inesperado.");
       setStatus("error");
+    }
+  };
+
+  const handleExport = async () => {
+    if (!videoProps) return;
+    setExportStatus("exporting");
+    setExportPercent(0);
+    setExportStage("Iniciando...");
+    setExportError("");
+
+    try {
+      const res = await fetch("/api/export-video", {
+        method: "POST",
+        body: JSON.stringify({ videoProps, durationInFrames }),
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!res.body) throw new Error("Sem resposta do servidor.");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+
+        for (const part of parts) {
+          if (!part.startsWith("data: ")) continue;
+          const event = JSON.parse(part.slice(6));
+
+          if (event.type === "progress") {
+            setExportStage(event.stage);
+            setExportPercent(event.percent);
+          } else if (event.type === "done") {
+            setExportPercent(100);
+            setExportStage("Concluído!");
+            // Decode base64 → Blob → download
+            const binary = atob(event.videoBase64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const blob = new Blob([bytes], { type: "video/mp4" });
+            const objectUrl = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = objectUrl;
+            a.download = "autoshorts.mp4";
+            a.click();
+            URL.revokeObjectURL(objectUrl);
+            setExportStatus("done");
+            setTimeout(() => setExportStatus("idle"), 3000);
+            return;
+          } else if (event.type === "error") {
+            throw new Error(event.message);
+          }
+        }
+      }
+    } catch (error: any) {
+      setExportError(error?.message || "Erro ao exportar. Tente novamente.");
+      setExportStatus("error");
     }
   };
 
@@ -187,6 +221,54 @@ export default function Home() {
                   loop
                 />
               </div>
+              {exportStatus === "idle" && (
+                <button
+                  onClick={handleExport}
+                  className="flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-500 text-white font-bold rounded-xl transition-colors"
+                >
+                  <Download className="w-5 h-5" />
+                  Exportar vídeo
+                </button>
+              )}
+
+              {exportStatus === "exporting" && (
+                <div className="w-72 space-y-3 text-center">
+                  <div className="flex items-center justify-center gap-2 text-white font-bold">
+                    <Loader2 className="w-5 h-5 animate-spin text-green-400" />
+                    <span>{exportStage}</span>
+                    <span className="text-green-400">{exportPercent}%</span>
+                  </div>
+                  <div className="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="h-full bg-green-500 rounded-full transition-all duration-500 ease-out"
+                      style={{ width: `${exportPercent}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {exportStatus === "done" && (
+                <div className="flex items-center gap-2 px-6 py-3 bg-green-900/40 border border-green-600 rounded-xl text-green-400 font-bold">
+                  <CheckCircle2 className="w-5 h-5" />
+                  Vídeo exportado!
+                </div>
+              )}
+
+              {exportStatus === "error" && (
+                <div className="flex flex-col items-center gap-3">
+                  <div className="flex items-center gap-2 px-4 py-3 bg-red-900/30 border border-red-700 rounded-xl text-red-300 text-sm">
+                    <XCircle className="w-4 h-4 shrink-0" />
+                    {exportError || "Erro ao exportar. Tente novamente."}
+                  </div>
+                  <button
+                    onClick={handleExport}
+                    className="flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-500 text-white font-bold rounded-xl transition-colors"
+                  >
+                    <Download className="w-5 h-5" />
+                    Tentar novamente
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-center opacity-40">
