@@ -10,19 +10,18 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.88",
-    "@remotion/bundler": "4.0.393",
-    "@remotion/player": "4.0.393",
-    "@remotion/renderer": "4.0.393",
+    "@remotion/bundler": "4.0.438",
+    "@remotion/player": "4.0.438",
+    "@remotion/renderer": "4.0.438",
     "ai": "^5.0.114",
     "cheerio": "^1.1.2",
-    "codex": "^0.2.3",
     "lucide-react": "^0.561.0",
-    "next": "16.0.10",
+    "next": "16.2.2",
     "openai": "^6.14.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "react-player": "^3.4.0",
-    "remotion": "4.0.393",
+    "remotion": "4.0.438",
     "zod": "^4.2.1"
   },
   "devDependencies": {
@@ -30,8 +29,9 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "baseline-browser-mapping": "^2.10.13",
     "eslint": "^9",
-    "eslint-config-next": "16.0.10",
+    "eslint-config-next": "16.2.2",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
