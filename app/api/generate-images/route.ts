@@ -34,14 +34,30 @@ export async function POST(req: NextRequest) {
     )
   );
 
-  const imageUrls = results.map((result, i) => {
-    if (result.status === "fulfilled") {
-      return result.value.data[0].url!;
-    }
-    // Fallback to a neutral placeholder on individual failure
-    console.error(`[generate-images] Image ${i + 1} failed:`, (result as PromiseRejectedResult).reason);
-    return `https://picsum.photos/seed/fallback_${i}/1024/1792`;
-  });
+  // Fetch each image server-side and convert to base64 to avoid CORS + expiry issues
+  const imageUrls = await Promise.all(
+    results.map(async (result, i) => {
+      const url =
+        result.status === "fulfilled"
+          ? result.value.data[0].url!
+          : `https://picsum.photos/seed/fallback_${i}/1024/1792`;
+
+      if (result.status === "rejected") {
+        console.error(`[generate-images] Image ${i + 1} failed:`, (result as PromiseRejectedResult).reason);
+      }
+
+      try {
+        const res = await fetch(url);
+        const buffer = await res.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString("base64");
+        const mime = res.headers.get("content-type") || "image/png";
+        return `data:${mime};base64,${base64}`;
+      } catch (e) {
+        console.error(`[generate-images] Failed to fetch image ${i + 1}:`, e);
+        return `https://picsum.photos/seed/fallback_${i}/1024/1792`;
+      }
+    })
+  );
 
   return NextResponse.json({ imageUrls });
 }

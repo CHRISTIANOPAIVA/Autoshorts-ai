@@ -16,7 +16,7 @@
     "ai": "^5.0.114",
     "cheerio": "^1.1.2",
     "lucide-react": "^0.561.0",
-    "next": "16.2.2",
+    "next": "^15.3.0",
     "openai": "^6.14.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",
@@ -31,7 +31,7 @@
     "@types/react-dom": "^18",
     "baseline-browser-mapping": "^2.10.13",
     "eslint": "^9",
-    "eslint-config-next": "16.2.2",
+    "eslint-config-next": "^15.3.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

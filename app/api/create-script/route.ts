@@ -60,7 +60,14 @@ EXAMPLE OUTPUT for main_subject = "capybara":
 6. "capybara mother nursing her young by a calm lake at dusk, emotional intimate scene, soft bokeh"
 7. "capybara sitting peacefully with birds perched on its back, surprised expression, bright daylight, funny wildlife photo"
 
-CRITICAL: If you omit main_subject from the start of any prompt, the image generation will fail.`
+CRITICAL: If you omit main_subject from the start of any prompt, the image generation will fail.
+
+SAFETY RULES — strictly avoid these in every prompt (DALL-E will reject them):
+- No violence, predation, hunting, killing, or harm to animals or humans
+- No blood, injury, or death
+- No sexual content
+- No weapons
+- For scene type 6 (Dramatic/emotional moment): use awe-inspiring, majestic, or tender moments only — NOT conflict or danger`
         },
         { role: "user", content: `Article content:\n\n${pageContent}\n\nExtract the main_subject, write the Portuguese narration, then generate 7 image_prompts that each start with the main_subject.` }
       ],
